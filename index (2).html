@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Poker Texas Hold’em</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{color-scheme:dark;--panel:#0e1b16;--line:#ffffff1c;--tx:#f1f6f3;--mut:#8fb3a4;--gold:#f5c451;--gold2:#c98d1b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{background:radial-gradient(ellipse at 50% 0,#12302a 0,#07130f 55%,#030806 100%) fixed;color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;overflow-x:hidden}
+main{max-width:980px;margin:0 auto;padding:6px 10px 0}
+.hud{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 4px}
+.hud .r{display:flex;gap:6px}
+.brand{font-weight:900;letter-spacing:3px;font-size:15px;background:linear-gradient(var(--gold),var(--gold2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.pill{background:#ffffff10;border:1px solid var(--line);color:var(--tx);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700}
+#st{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#000d;border:1px solid var(--gold);color:var(--gold);padding:6px 14px;border-radius:999px;font-size:13px;z-index:9}
+#st:empty{display:none}
+.tbl{position:relative;width:100%;aspect-ratio:16/10.5;margin:6px 0 38px}
+@media(max-width:640px){.tbl{aspect-ratio:3/4.2;margin-bottom:44px}}
+.rail{position:absolute;inset:9% 2%;border-radius:999px;padding:14px;background:linear-gradient(180deg,#7a4b28,#3e2413 45%,#5f3a1d);box-shadow:0 0 0 2px #1b0e06,0 30px 60px #000d,inset 0 2px 0 #ffffff30}
+.felt{position:relative;width:100%;height:100%;border-radius:999px;background:radial-gradient(ellipse at 50% 35%,#27a077,#14795a 45%,#0a4b37 100%);box-shadow:inset 0 0 80px #000b,inset 0 0 0 2px #0006;overflow:hidden}
+.felt::before{content:"♠";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:min(30vw,260px);color:#fff;opacity:.04}
+.felt::after{content:"";position:absolute;inset:7%;border:1.5px solid #f5c45140;border-radius:999px}
+.mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-52%);text-align:center;width:58%;z-index:2}
+.phase{font-size:10px;letter-spacing:3px;color:#d2eee1;opacity:.75}
+.board{display:flex;gap:6px;justify-content:center;margin:8px 0;--cs:17px}
+@media(max-width:640px){.board{--cs:12px;gap:4px}}
+.pot{display:inline-flex;align-items:center;gap:8px;background:#000a;border:1px solid #f5c45155;color:var(--gold);padding:4px 14px 4px 8px;border-radius:999px;font-weight:800;font-size:14px}
+.log{font-size:12.5px;color:#d6efe3;min-height:18px;margin-top:8px}
+.win{display:inline-block;background:linear-gradient(90deg,#c98d1b,#f5c451,#c98d1b);color:#2a1b00;font-weight:800;padding:6px 16px;border-radius:14px;animation:pop .5s cubic-bezier(.2,1.4,.4,1) both;font-size:13px}
+.card{--cs:14px;position:relative;display:inline-block;font-size:var(--cs);width:2.7em;height:3.8em;background:linear-gradient(160deg,#fff,#e4e9ec);color:#161a1d;border-radius:.35em;box-shadow:0 .15em .5em #000a;font-weight:800;flex:none}
+.card b{position:absolute;left:.22em;top:.12em;font-size:.95em;line-height:1}
+.card u{position:absolute;left:.22em;top:1.1em;font-size:.75em;text-decoration:none;line-height:1}
+.card i{position:absolute;right:.2em;bottom:.05em;font-style:normal;font-size:1.7em;line-height:1}
+.card.red{color:#d42a3c}
+.card.back{background:repeating-linear-gradient(45deg,#1d3f86 0 .3em,#16306a .3em .6em);border:.18em solid #f1f1f1;box-shadow:0 .15em .5em #000a,inset 0 0 0 .1em #c98d1b}
+.card.empty{background:#ffffff10;box-shadow:inset 0 0 0 1px #ffffff22}
+.deal{animation:deal .5s cubic-bezier(.2,.8,.2,1) both}
+@keyframes deal{from{transform:translateY(-60px) rotate(-14deg) scale(.5);opacity:0}}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+@keyframes pulse{50%{box-shadow:0 0 0 4px #f5c45166,0 0 26px #f5c451aa}}
+.seat{position:absolute;transform:translate(-50%,-50%);width:112px;text-align:center;z-index:3}
+@media(max-width:640px){.seat{width:90px}}
+.hand{display:flex;justify-content:center;margin-bottom:-18px;position:relative;z-index:1;--cs:11px}
+.hand .card:first-child{transform:rotate(-7deg) translateX(3px)}.hand .card:last-child{transform:rotate(7deg) translateX(-3px)}
+.seat.me .hand{--cs:15px}
+.plate{position:relative;background:linear-gradient(#1a2e26,#0d1914);border:1px solid var(--line);border-radius:14px;padding:20px 6px 6px;box-shadow:0 8px 18px #000a}
+.av{position:absolute;left:-9px;top:-9px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;color:#fff;border:2px solid #0d1914;z-index:2}
+.seat.turn .plate{border-color:var(--gold);animation:pulse 1.3s infinite}
+.seat.win .plate{border-color:var(--gold);box-shadow:0 0 0 3px #f5c45188,0 0 30px #f5c451cc}
+.seat.fold .plate,.seat.off .plate{opacity:.45}.seat.me .plate{border-color:#5fd3a8}
+.nm{font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{color:var(--gold);font-weight:800;font-size:13px}
+.tag{font-size:10.5px;color:var(--mut);min-height:14px;letter-spacing:.5px}
+.dealer{position:absolute;top:-8px;right:-6px;background:#fff;color:#111;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px #000a}
+.bet{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;font-weight:800;font-size:12px;color:#fff;z-index:2;text-shadow:0 1px 3px #000}
+.ch{width:18px;height:18px;border-radius:50%;border:3px dashed #fff;box-shadow:0 2px 3px #000a,inset 0 0 0 2px #0004;flex:none}
+.c0{background:#e8e8e8;border-color:#999}.c1{background:#d42a3c}.c2{background:#2a66d4}.c3{background:#111;border-color:var(--gold)}
+.adm{display:flex;gap:4px;justify-content:center;margin-top:3px}.adm button{padding:2px 8px;font-size:11px;border-radius:6px}
+.bar{position:sticky;bottom:0;margin:0 -10px;padding:14px 12px calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(#0000,#030806ee 35%);backdrop-filter:blur(6px);z-index:5}
+.bar .in{max-width:560px;margin:0 auto}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+button{background:#2a3a33;color:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+button:active{transform:translateY(1px)}
+button.big{flex:1;min-width:110px;padding:14px 10px;border-radius:14px;font-size:14px;letter-spacing:.5px;text-transform:uppercase;border:0}
+button.f{background:linear-gradient(#d8434f,#a52630)}button.call{background:linear-gradient(#2fb98b,#177a5a)}
+button.gold{background:linear-gradient(#f9d070,#d79a1f);color:#2a1b00;border:0}
+input{background:#0a1712;color:var(--tx);border:1px solid #2d5a49;border-radius:10px;padding:10px;font-size:15px;font-family:inherit}
+input[type=range]{accent-color:var(--gold);padding:0;width:100%}
+.raise{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.msg{color:var(--mut);font-size:14px;text-align:center}
+.hero{max-width:420px;margin:8vh auto;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<div id="st"></div>
+<div id="app"></div>
+</main>
+<script>
+const BB=2,SB=1,START=100,MAXP=6;
+const R=['','','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+const NAMES=['Mậu thầu','Một đôi','Hai đôi','Sám cô','Sảnh','Thùng','Cù lũ','Tứ quý','Thùng phá sảnh'];
+const $=id=>document.getElementById(id);
+const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}};
+const rnd=()=>Math.random().toString(36).slice(2,10);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let isHost=false,S=null,V=null,peer=null,conn=null,room='',name=ls('pk_name')||'',tok='',conns={},rt=null;
+const status=t=>{$('st').textContent=t||''};
+
+/* ---------- luật chơi (chạy trên máy chủ bàn) ---------- */
+function shuffle(){const d=[...Array(52).keys()];for(let i=51;i>0;i--){const j=Math.random()*(i+1)|0;[d[i],d[j]]=[d[j],d[i]]}return d}
+function ev5(c){
+  const r=c.map(x=>x%13+2).sort((a,b)=>b-a),fl=c.every(x=>(x/13|0)==(c[0]/13|0));
+  const cnt={};r.forEach(x=>cnt[x]=(cnt[x]||0)+1);
+  const g=Object.keys(cnt).map(Number).sort((a,b)=>cnt[b]-cnt[a]||b-a);
+  const cs=g.map(x=>cnt[x]).join(''),u=[...new Set(r)];let st=0;
+  if(u.length==5){if(u[0]-u[4]==4)st=u[0];else if(u[0]==14&&u[1]==5)st=5}
+  let cat,k=g;
+  if(st&&fl){cat=8;k=[st]}else if(cs=='41')cat=7;else if(cs=='32')cat=6;else if(fl)cat=5;
+  else if(st){cat=4;k=[st]}else if(cs=='311')cat=3;else if(cs=='221')cat=2;else if(cs=='2111')cat=1;else cat=0;
+  let s=cat;k.forEach(x=>s=s*15+x);for(let j=k.length;j<5;j++)s*=15;
+  return {s,n:NAMES[cat]};
+}
+function best(c){let b=null;for(let a=0;a<c.length;a++)for(let d=a+1;d<c.length;d++){const e=ev5(c.filter((_,i)=>i!=a&&i!=d));if(!b||e.s>b.s)b=e}return b}
+function post(s,i,a){a=Math.min(a,s.players[i].chips);s.players[i].chips-=a;s.bets[i]+=a;s.contrib[i]+=a;if(s.players[i].chips==0)s.allin[i]=true}
+function canAct(s){return s.order.filter(i=>!s.folded[i]&&!s.allin[i])}
+function nextActor(s,pos){const n=s.order.length;for(let k=0;k<n;k++){const i=s.order[(pos+k)%n];if(!s.folded[i]&&!s.allin[i])return i}return null}
+function totalPot(s){return s.order.reduce((a,i)=>a+s.contrib[i],0)}
+function newHand(s){
+  s.players.forEach(p=>{if(p.chips<=0)p.chips=s.start||START});
+  const act=s.players.map((_,i)=>i);
+  if(act.length<2)return false;
+  const n=act.length;s.order=act;s.dealer=s.dealer==null?0:(s.dealer+1)%n;const d=s.dealer;
+  const sb=n==2?d:(d+1)%n,bb=n==2?(d+1)%n:(d+2)%n,first=n==2?d:(d+3)%n;
+  s.deck=shuffle();s.hands={};act.forEach(i=>s.hands[i]=[s.deck.pop(),s.deck.pop()]);
+  s.board=[];s.bets={};s.contrib={};s.folded={};s.allin={};s.acted={};s.reveal=[];
+  act.forEach(i=>{s.bets[i]=0;s.contrib[i]=0});
+  post(s,act[sb],SB);post(s,act[bb],BB);
+  s.current=BB;s.minRaise=BB;s.phase='preflop';s.result=null;s.winners=[];s.hn=(s.hn||0)+1;s.log='Ván mới bắt đầu';
+  s.turn=nextActor(s,first);
+  if(s.turn==null||canAct(s).length<=1&&act.every(i=>s.allin[i]||s.bets[i]==s.current))advance(s);
+  return true;
+}
+function award(s,alive){
+  const p=totalPot(s);s.players[alive[0]].chips+=p;s.phase='showdown';s.turn=null;s.winners=[alive[0]];
+  s.result=s.players[alive[0]].name+' thắng '+p+' (mọi người úp bài)';
+}
+function showdown(s){
+  const alive=s.order.filter(i=>!s.folded[i]),sc={};
+  alive.forEach(i=>sc[i]=best([...s.hands[i],...s.board]));
+  const lv=[...new Set(s.order.map(i=>s.contrib[i]))].sort((a,b)=>a-b);let prev=0;const res=[],ws=new Set();
+  for(const L of lv){
+    let pot=0;s.order.forEach(i=>pot+=Math.min(s.contrib[i],L)-Math.min(s.contrib[i],prev));prev=L;
+    if(!pot)continue;
+    let el=alive.filter(i=>s.contrib[i]>=L);if(!el.length)el=[alive[0]];
+    const top=Math.max(...el.map(i=>sc[i].s)),w=el.filter(i=>sc[i].s==top),sh=Math.floor(pot/w.length);
+    w.forEach((i,k)=>s.players[i].chips+=sh+(k==0?pot-sh*w.length:0));
+    w.forEach(i=>ws.add(i));res.push(w.map(i=>s.players[i].name+' ('+sc[i].n+')').join(', ')+' thắng '+pot);
+  }
+  s.reveal=alive;s.phase='showdown';s.turn=null;s.winners=[...ws];s.result=res.join(' · ');
+}
+function advance(s){
+  s.order.forEach(i=>s.bets[i]=0);s.current=0;s.minRaise=BB;s.acted={};
+  const ph=['preflop','flop','turn','river'],k=ph.indexOf(s.phase);
+  if(k==3){showdown(s);return}
+  const cnt=k==0?3:1;for(let j=0;j<cnt;j++)s.board.push(s.deck.pop());
+  s.phase=ph[k+1];
+  if(canAct(s).length<=1){advance(s);return}
+  s.turn=nextActor(s,(s.dealer+1)%s.order.length);
+}
+function after(s,pos){
+  const alive=s.order.filter(i=>!s.folded[i]);
+  if(alive.length==1){award(s,alive);return}
+  const done=canAct(s).every(i=>s.acted[i]&&s.bets[i]==s.current);
+  if(!done){s.turn=nextActor(s,pos+1);return}
+  advance(s);
+}
+function doAct(s,i,t,x){
+  if(s.turn!==i)return false;
+  const pos=s.order.indexOf(i),nm=s.players[i].name;
+  if(t=='fold'){s.folded[i]=true;s.log=nm+' bỏ bài'}
+  else if(t=='call'){const need=s.current-s.bets[i];post(s,i,need);s.log=nm+(need?' theo':' check')}
+  else{
+    const mx=s.bets[i]+s.players[i].chips;let to=Math.min(Math.max(+x||0,s.current+s.minRaise),mx);
+    if(to>s.current){s.minRaise=Math.max(s.minRaise,to-s.current);s.current=to;s.acted={}}
+    post(s,i,to-s.bets[i]);s.log=nm+(s.allin[i]?' ALL-IN ':' tố lên ')+s.bets[i];
+  }
+  s.acted[i]=true;after(s,pos);
+}
+const free=s=>!s.order||s.phase=='lobby'||s.phase=='showdown';
+
+/* ---------- máy chủ bàn (chủ phòng) ---------- */
+function persist(){ls('pk_state',JSON.stringify(S))}
+function hostIdx(){return S.players.findIndex(p=>p.token==='host')}
+function view(s,i){
+  const v={...s};delete v.deck;v.me=i;v.hands={};
+  if(s.hands)for(const k in s.hands)if(+k===i||(s.phase=='showdown'&&s.reveal.includes(+k)))v.hands[k]=s.hands[k];
+  v.players=s.players.map(p=>({name:p.name,chips:p.chips,on:p.token==='host'||!!(conns[p.token]&&conns[p.token].open)}));
+  return v;
+}
+function bcast(){
+  V=view(S,hostIdx());render();
+  S.players.forEach((p,i)=>{const c=conns[p.token];if(c&&c.open)c.send({t:'state',s:view(S,i)})});
+}
+function mut(fn){
+  const s=structuredClone(S);if(fn(s)===false)return false;
+  s.v=(s.v||0)+1;S=s;persist();bcast();return true;
+}
+function onMsg(c,m){
+  if(m.t=='join'){
+    const s=structuredClone(S);let i=s.players.findIndex(p=>p.token===m.token);
+    if(i<0){
+      if(s.players.length>=MAXP){c.send({t:'full'});return}
+      s.players.push({token:String(m.token).slice(0,20),name:String(m.name||'Khách').slice(0,14),chips:s.start||START});
+    }
+    conns[m.token]=c;c.tok=m.token;S=s;persist();bcast();return;
+  }
+  const i=S.players.findIndex(p=>p.token===c.tok);if(i<0)return;
+  if(m.t=='act')mut(s=>doAct(s,i,m.a,m.x));
+  if(m.t=='deal')hostDeal();
+}
+function startHost(nm){
+  isHost=true;name=nm;ls('pk_name',nm);
+  const id=ls('pk_room')||('poker-'+rnd());
+  status('Đang tạo phòng…');
+  peer=new Peer(id);
+  peer.on('open',()=>{
+    ls('pk_room',id);room=id;status('');
+    if(!S)S={players:[],phase:'lobby',v:0,start:START};
+    if(hostIdx()<0)S.players.push({token:'host',name:nm,chips:S.start||START});
+    persist();bcast();
+  });
+  peer.on('connection',c=>{c.on('data',m=>onMsg(c,m));c.on('close',()=>bcast());c.on('error',()=>{})});
+  peer.on('error',e=>{
+    if(e.type=='unavailable-id'){ls('pk_room',null);peer.destroy();startHost(nm)}
+    else status('Lỗi mạng: '+e.type);
+  });
+}
+function hostDeal(){if(!mut(s=>free(s)&&newHand(s)))alert('Cần ít nhất 2 người và ván trước đã kết thúc.')}
+function adminChips(i){
+  if(!isHost||!free(S))return alert('Chỉ chỉnh được giữa các ván');
+  const v=prompt('Coin của '+S.players[i].name+':',S.players[i].chips);if(v===null||isNaN(+v)||+v<0)return;
+  mut(s=>{s.players[i].chips=Math.floor(+v)});
+}
+function kick(i){
+  if(!isHost||!free(S))return alert('Chỉ mời ra được giữa các ván');
+  if(!confirm('Mời '+S.players[i].name+' ra khỏi bàn?'))return;
+  const t=S.players[i].token;if(conns[t]){try{conns[t].close()}catch(e){}delete conns[t]}
+  mut(s=>{s.players.splice(i,1)});
+}
+function setStart(){
+  const v=prompt('Coin khởi đầu cho người mới và mức hồi lại khi hết coin:',S.start||START);
+  if(v===null||isNaN(+v)||+v<1)return;mut(s=>{s.start=Math.floor(+v)});
+}
+function resetTable(){
+  if(!confirm('Reset cả bàn về ban đầu?'))return;
+  mut(s=>{s.players.forEach(p=>p.chips=s.start||START);s.phase='lobby';s.dealer=null;s.board=[];s.result=null;s.turn=null;s.order=null});
+}
+
+/* ---------- người chơi (không phải chủ phòng) ---------- */
+function connect(){
+  clearTimeout(rt);status('Đang kết nối…');
+  if(peer){try{peer.destroy()}catch(e){}}
+  peer=new Peer();
+  peer.on('open',()=>{
+    conn=peer.connect(room,{reliable:true});
+    conn.on('open',()=>{status('');conn.send({t:'join',token:tok,name})});
+    conn.on('data',m=>{if(m.t=='state'){V=m.s;render()}else if(m.t=='full'){status('Bàn đã đủ 6 người.')}});
+    conn.on('close',lost);conn.on('error',lost);
+  });
+  peer.on('error',lost);
+}
+function lost(){status('Mất kết nối với chủ phòng, đang thử lại…');clearTimeout(rt);rt=setTimeout(connect,3000)}
+function startGuest(nm){
+  isHost=false;name=nm;ls('pk_name',nm);
+  try{tok=sessionStorage.getItem('pk_tok')||rnd()+rnd();sessionStorage.setItem('pk_tok',tok)}catch(e){tok=rnd()+rnd()}
+  connect();
+}
+
+/* ---------- thao tác chung ---------- */
+function act(t,x){if(isHost)mut(s=>doAct(s,hostIdx(),t,x));else if(conn&&conn.open)conn.send({t:'act',a:t,x})}
+function deal(){if(isHost)hostDeal();else if(conn&&conn.open)conn.send({t:'deal'})}
+
+/* ---------- giao diện ---------- */
+let seen=new Set(),mute=ls('pk_mute')==='1',AC=null,lastTurn=-1,lastBoard=0,lastWin='';
+function snd(f,d=.13,v=.07,type='sine'){
+  if(mute)return;
+  try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();AC.resume();
+    const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.value=f;g.gain.value=v;o.connect(g);g.connect(AC.destination);
+    o.start();g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);o.stop(AC.currentTime+d)}catch(e){}
+}
+function toggleMute(){mute=!mute;ls('pk_mute',mute?'1':'0');render()}
+function card(c,back,key){
+  let an='';if(key&&!seen.has(key)){seen.add(key);an=' deal'}
+  if(back)return `<span class="card back${an}"></span>`;
+  const su=c/13|0,sy='♣♦♥♠'[su];
+  return `<span class="card ${su==1||su==2?'red':''}${an}"><b>${R[c%13+2]}</b><u>${sy}</u><i>${sy}</i></span>`;
+}
+const brand='<div class="brand">♠ POKER NIGHT</div>';
+function landing(){
+  const joining=!!room;
+  $('app').innerHTML=`<div class="hero"><div class="brand" style="font-size:30px">♠ POKER NIGHT</div>
+  <p class="msg" style="margin:8px 0 22px">Texas Hold’em · tối đa 6 người</p>
+  <div class="panel"><p>${joining?'Bạn được mời vào bàn. Nhập tên để chơi:':'Tạo phòng mới rồi gửi link cho bạn bè.'}</p>
+  <div class="row"><input id="nm" type="text" maxlength="14" placeholder="Tên của bạn" value="${esc(name)}" style="width:170px">
+  <button class="gold" id="go" style="padding:11px 20px">${joining?'Vào bàn':'Tạo phòng'}</button></div></div></div>`;
+  $('go').onclick=()=>{const v=$('nm').value.trim();if(!v)return;joining?startGuest(v):startHost(v)};
+}
+function setR(v){$('rs').value=v;$('rv').textContent=$('rs').value}
+function copyLink(){
+  const l=location.href.split('#')[0]+'#'+room;
+  const ok=()=>{status('Đã copy link mời');setTimeout(()=>status(''),2500)};
+  try{navigator.clipboard.writeText(l).then(ok,()=>prompt('Copy link này:',l))}catch(e){prompt('Copy link này:',l)}
+}
+function seatPos(k,n){
+  const a=(90+k*360/n)*Math.PI/180,port=innerWidth<=640;
+  return [50+(port?41:43)*Math.cos(a),50+41*Math.sin(a)];
+}
+function hue(nm){let h=0;for(const c of nm)h=(h*31+c.charCodeAt(0))%360;return h}
+function render(){
+  const s=V,app=$('app');if(!s)return;
+  const mi=s.me,n=s.players.length,inHand=!!s.order&&s.phase!='lobby',pot=inHand?totalPot(s):0,hn=s.hn||0;
+  let bets='';
+  const seats=s.players.map((p,i)=>{
+    const [x,y]=seatPos((i-mi+n)%n,n);
+    const ing=inHand&&s.order.includes(i),fold=ing&&s.folded[i],h=s.hands[i];
+    const cards=ing?(h?h.map((c,j)=>card(c,0,`${hn}-${s.phase=='showdown'&&i!==mi?'r':'h'}${i}-${j}`)).join(''):[0,1].map(j=>card(0,1,`${hn}-h${i}-${j}`)).join('')):'';
+    const dl=ing&&s.order[s.dealer]===i;
+    const st=!ing?(s.phase=='lobby'?'':'chờ ván sau'):fold?'BỎ BÀI':s.allin[i]?'ALL-IN':'';
+    if(ing&&s.bets[i]>0){const b=s.bets[i],c=b<5?0:b<20?1:b<50?2:3;
+      bets+=`<div class="bet" style="left:${x+(50-x)*.4}%;top:${y+(50-y)*.4}%"><span class="ch c${c}"></span>${b}</div>`}
+    const adm=isHost?`<div class="adm"><button onclick="adminChips(${i})">✎</button>${i!==mi?`<button class="f" onclick="kick(${i})">✕</button>`:''}</div>`:'';
+    const hu=hue(p.name),win=s.phase=='showdown'&&(s.winners||[]).includes(i);
+    return `<div class="seat ${i===mi?'me':''} ${s.turn===i?'turn':''} ${fold?'fold':''} ${p.on?'':'off'} ${win?'win':''}" style="left:${x}%;top:${y}%">
+      <div class="hand">${cards}</div><div class="plate"><div class="av" style="background:linear-gradient(135deg,hsl(${hu} 65% 50%),hsl(${hu+40} 65% 32%))">${esc([...p.name][0]||'?').toUpperCase()}</div>${dl?'<div class="dealer">D</div>':''}
+      <div class="nm">${esc(p.name)}${i===mi?' (bạn)':''}</div><div class="chips">💰 ${p.chips}</div>
+      <div class="tag">${p.on?st:'offline'}</div>${adm}</div></div>`;
+  }).join('');
+  const board=[0,1,2,3,4].map(k=>s.board&&s.board[k]!=null?card(s.board[k],0,`${hn}-b${k}`):'<span class="card empty"></span>').join('');
+  let ctl='';
+  if(s.turn===mi){
+    const need=s.current-s.bets[mi],mx=s.bets[mi]+s.players[mi].chips,mn=Math.min(s.current+s.minRaise,mx);
+    const cl=v=>Math.min(Math.max(v,mn),mx);
+    ctl=`<div class="msg" style="color:var(--gold);margin-bottom:8px;font-weight:700">ĐẾN LƯỢT BẠN</div>
+    <div class="row"><button class="big f" onclick="act('fold')">Bỏ bài</button>
+    <button class="big call" onclick="act('call')">${need>0?'Theo '+Math.min(need,s.players[mi].chips):'Check'}</button></div>
+    ${mx>s.current?`<div class="raise"><div class="row"><span class="msg">Tố lên tới</span><b id="rv" class="chips" style="font-size:22px">${mn}</b>
+    <button onclick="setR(${mn})">Min</button><button onclick="setR(${cl(s.current+(pot>>1))})">½ pot</button>
+    <button onclick="setR(${cl(s.current+pot)})">Pot</button><button onclick="setR(${mx})">All-in</button></div>
+    <input id="rs" type="range" min="${mn}" max="${mx}" value="${mn}" oninput="$('rv').textContent=this.value">
+    <button class="big gold" onclick="act('raise',$('rs').value)">Tố lên</button></div>`:''}`;
+  }else if(inHand&&s.phase!='showdown'&&s.turn!=null){
+    ctl=`<div class="msg">Đang chờ <b>${esc(s.players[s.turn].name)}</b>…</div>`;
+  }
+  const canDeal=(!inHand||s.phase=='showdown')&&n>=2;
+  const extra=`<div class="row" style="margin-top:${ctl?10:0}px">${canDeal?'<button class="big gold" onclick="deal()">'+(s.phase=='lobby'?'Bắt đầu ván':'Chia ván mới')+'</button>':''}
+    ${isHost?'<button onclick="resetTable()">Reset bàn</button><button onclick="setStart()">Coin khởi đầu</button>':''}</div>`;
+  app.innerHTML=`<div class="hud">${brand}<div class="r"><button class="pill" onclick="toggleMute()">${mute?'🔇':'🔊'}</button>${isHost?'<button class="pill" onclick="copyLink()">🔗 Copy link mời</button>':''}</div></div>
+    <div class="tbl"><div class="rail"><div class="felt"></div></div>
+    <div class="mid"><div class="phase">${inHand?s.phase.toUpperCase():'PHÒNG CHỜ'} · BLIND ${SB}/${BB}</div>
+    <div class="board">${board}</div><div class="pot"><span class="ch c3"></span>POT ${pot}</div>
+    <div class="log">${s.result?`<span class="win">🏆 ${esc(s.result)}</span>`:esc(s.log||'')}</div></div>
+    ${bets}${seats}</div>
+    <div class="bar"><div class="in">${ctl}${extra}</div></div>`;
+  if(s.turn===mi&&lastTurn!==mi){snd(660,.12);setTimeout(()=>snd(880,.18),120)}
+  if((s.board||[]).length>lastBoard)snd(300,.08,.06,'triangle');
+  const wk=s.phase=='showdown'?hn+':'+(s.winners||[]).join():'';
+  if(wk&&wk!==lastWin&&(s.winners||[]).includes(mi)){snd(523,.15);setTimeout(()=>snd(659,.15),150);setTimeout(()=>snd(784,.3),300)}
+  lastTurn=s.turn;lastBoard=(s.board||[]).length;lastWin=wk||lastWin;
+}
+let lw=innerWidth;window.addEventListener('resize',()=>{if(V&&(innerWidth<=640)!==(lw<=640)){lw=innerWidth;render()}});
+
+/* ---------- khởi động ---------- */
+(function(){
+  room=location.hash.slice(1);
+  if(!room){
+    try{const sv=JSON.parse(ls('pk_state')||'null');
+      if(sv&&sv.players){const h=sv.players.find(p=>p.token==='host');if(h){S=sv;startHost(h.name);return}}}catch(e){}
+  }
+  landing();
+})();
+</script>
+</body>
+</html>
