@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Poker Texas Hold’em</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#0b3d2e;--felt:#14604a;--panel:#0d2f25;--tx:#f2f7f4;--mut:#9cc3b5;--gold:#f5c542;--btn:#1f8a68;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:12px}
+h1{font-size:18px;margin:4px 0 10px}
+.table{background:var(--felt);border-radius:24px;padding:14px;text-align:center;border:4px solid #0a2a20}
+.board{display:flex;gap:6px;justify-content:center;min-height:56px;margin:8px 0}
+.pot{color:var(--gold);font-weight:700}
+.card{display:inline-flex;align-items:center;justify-content:center;width:40px;height:56px;background:#fff;color:#111;border-radius:6px;font-weight:700;font-size:17px}
+.card.red{color:#d11}
+.card.back{background:repeating-linear-gradient(45deg,#2b5fb0,#2b5fb0 4px,#1e4a90 4px,#1e4a90 8px);color:transparent}
+.card.empty{background:#ffffff18}
+.seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:12px 0}
+.seat{background:var(--panel);border-radius:12px;padding:8px;border:2px solid transparent;text-align:center}
+.seat.turn{border-color:var(--gold)}.seat.fold,.seat.off{opacity:.45}.seat.me{border-color:#5fd3a8}
+.seat .cards{display:flex;gap:4px;justify-content:center;margin:6px 0}
+.seat .card{width:32px;height:45px;font-size:14px}
+.nm{font-weight:700}.chips{color:var(--gold)}.tag{font-size:12px;color:var(--mut)}
+.panel{background:var(--panel);border-radius:14px;padding:12px;margin-top:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+button{background:var(--btn);color:#fff;border:0;border-radius:10px;padding:11px 16px;font-size:15px;font-weight:600;cursor:pointer}
+button.f{background:#a33}button.g{background:#555}
+input{background:#0a241c;color:var(--tx);border:1px solid #2d6b57;border-radius:10px;padding:10px;font-size:15px;width:110px}
+.msg{color:var(--mut);font-size:14px;margin-top:6px}.win{color:var(--gold);font-weight:700}
+#st{color:#ffb4b4;font-size:13px;min-height:18px}
+.link{word-break:break-all;background:#0a241c;padding:8px;border-radius:8px;font-size:13px;margin:6px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>🃏 Poker Texas Hold’em · tối đa 6 người</h1>
+<div id="st"></div>
+<div id="app"></div>
+</main>
+<script>
+const BB=2,SB=1,START=100,MAXP=6;
+const R=' 23456789TJQKA'.split('').map(x=>x==='T'?'10':x);
+const NAMES=['Mậu thầu','Một đôi','Hai đôi','Sám cô','Sảnh','Thùng','Cù lũ','Tứ quý','Thùng phá sảnh'];
+const $=id=>document.getElementById(id);
+const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}};
+const rnd=()=>Math.random().toString(36).slice(2,10);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let isHost=false,S=null,V=null,peer=null,conn=null,room='',name=ls('pk_name')||'',tok='',conns={},rt=null;
+const status=t=>{$('st').textContent=t||''};
+
+/* ---------- luật chơi (chạy trên máy chủ bàn) ---------- */
+function shuffle(){const d=[...Array(52).keys()];for(let i=51;i>0;i--){const j=Math.random()*(i+1)|0;[d[i],d[j]]=[d[j],d[i]]}return d}
+function ev5(c){
+  const r=c.map(x=>x%13+2).sort((a,b)=>b-a),fl=c.every(x=>(x/13|0)==(c[0]/13|0));
+  const cnt={};r.forEach(x=>cnt[x]=(cnt[x]||0)+1);
+  const g=Object.keys(cnt).map(Number).sort((a,b)=>cnt[b]-cnt[a]||b-a);
+  const cs=g.map(x=>cnt[x]).join(''),u=[...new Set(r)];let st=0;
+  if(u.length==5){if(u[0]-u[4]==4)st=u[0];else if(u[0]==14&&u[1]==5)st=5}
+  let cat,k=g;
+  if(st&&fl){cat=8;k=[st]}else if(cs=='41')cat=7;else if(cs=='32')cat=6;else if(fl)cat=5;
+  else if(st){cat=4;k=[st]}else if(cs=='311')cat=3;else if(cs=='221')cat=2;else if(cs=='2111')cat=1;else cat=0;
+  let s=cat;k.forEach(x=>s=s*15+x);for(let j=k.length;j<5;j++)s*=15;
+  return {s,n:NAMES[cat]};
+}
+function best(c){let b=null;for(let a=0;a<c.length;a++)for(let d=a+1;d<c.length;d++){const e=ev5(c.filter((_,i)=>i!=a&&i!=d));if(!b||e.s>b.s)b=e}return b}
+function post(s,i,a){a=Math.min(a,s.players[i].chips);s.players[i].chips-=a;s.bets[i]+=a;s.contrib[i]+=a;if(s.players[i].chips==0)s.allin[i]=true}
+function canAct(s){return s.order.filter(i=>!s.folded[i]&&!s.allin[i])}
+function nextActor(s,pos){const n=s.order.length;for(let k=0;k<n;k++){const i=s.order[(pos+k)%n];if(!s.folded[i]&&!s.allin[i])return i}return null}
+function totalPot(s){return s.order.reduce((a,i)=>a+s.contrib[i],0)}
+function newHand(s){
+  s.players.forEach(p=>{if(p.chips<=0)p.chips=s.start||START});
+  const act=s.players.map((_,i)=>i);
+  if(act.length<2)return false;
+  const n=act.length;s.order=act;s.dealer=s.dealer==null?0:(s.dealer+1)%n;const d=s.dealer;
+  const sb=n==2?d:(d+1)%n,bb=n==2?(d+1)%n:(d+2)%n,first=n==2?d:(d+3)%n;
+  s.deck=shuffle();s.hands={};act.forEach(i=>s.hands[i]=[s.deck.pop(),s.deck.pop()]);
+  s.board=[];s.bets={};s.contrib={};s.folded={};s.allin={};s.acted={};s.reveal=[];
+  act.forEach(i=>{s.bets[i]=0;s.contrib[i]=0});
+  post(s,act[sb],SB);post(s,act[bb],BB);
+  s.current=BB;s.minRaise=BB;s.phase='preflop';s.result=null;s.log='Ván mới bắt đầu';
+  s.turn=nextActor(s,first);
+  if(s.turn==null||canAct(s).length<=1&&act.every(i=>s.allin[i]||s.bets[i]==s.current))advance(s);
+  return true;
+}
+function award(s,alive){
+  const p=totalPot(s);s.players[alive[0]].chips+=p;s.phase='showdown';s.turn=null;
+  s.result=s.players[alive[0]].name+' thắng '+p+' (mọi người úp bài)';
+}
+function showdown(s){
+  const alive=s.order.filter(i=>!s.folded[i]),sc={};
+  alive.forEach(i=>sc[i]=best([...s.hands[i],...s.board]));
+  const lv=[...new Set(s.order.map(i=>s.contrib[i]))].sort((a,b)=>a-b);let prev=0;const res=[];
+  for(const L of lv){
+    let pot=0;s.order.forEach(i=>pot+=Math.min(s.contrib[i],L)-Math.min(s.contrib[i],prev));prev=L;
+    if(!pot)continue;
+    let el=alive.filter(i=>s.contrib[i]>=L);if(!el.length)el=[alive[0]];
+    const top=Math.max(...el.map(i=>sc[i].s)),w=el.filter(i=>sc[i].s==top),sh=Math.floor(pot/w.length);
+    w.forEach((i,k)=>s.players[i].chips+=sh+(k==0?pot-sh*w.length:0));
+    res.push(w.map(i=>s.players[i].name+' ('+sc[i].n+')').join(', ')+' thắng '+pot);
+  }
+  s.reveal=alive;s.phase='showdown';s.turn=null;s.result=res.join(' · ');
+}
+function advance(s){
+  s.order.forEach(i=>s.bets[i]=0);s.current=0;s.minRaise=BB;s.acted={};
+  const ph=['preflop','flop','turn','river'],k=ph.indexOf(s.phase);
+  if(k==3){showdown(s);return}
+  const cnt=k==0?3:1;for(let j=0;j<cnt;j++)s.board.push(s.deck.pop());
+  s.phase=ph[k+1];
+  if(canAct(s).length<=1){advance(s);return}
+  s.turn=nextActor(s,(s.dealer+1)%s.order.length);
+}
+function after(s,pos){
+  const alive=s.order.filter(i=>!s.folded[i]);
+  if(alive.length==1){award(s,alive);return}
+  const done=canAct(s).every(i=>s.acted[i]&&s.bets[i]==s.current);
+  if(!done){s.turn=nextActor(s,pos+1);return}
+  advance(s);
+}
+function doAct(s,i,t,x){
+  if(s.turn!==i)return false;
+  const pos=s.order.indexOf(i),nm=s.players[i].name;
+  if(t=='fold'){s.folded[i]=true;s.log=nm+' bỏ bài'}
+  else if(t=='call'){const need=s.current-s.bets[i];post(s,i,need);s.log=nm+(need?' theo':' check')}
+  else{
+    const mx=s.bets[i]+s.players[i].chips;let to=Math.min(Math.max(+x||0,s.current+s.minRaise),mx);
+    if(to>s.current){s.minRaise=Math.max(s.minRaise,to-s.current);s.current=to;s.acted={}}
+    post(s,i,to-s.bets[i]);s.log=nm+(s.allin[i]?' ALL-IN ':' tố lên ')+s.bets[i];
+  }
+  s.acted[i]=true;after(s,pos);
+}
+const free=s=>!s.order||s.phase=='lobby'||s.phase=='showdown';
+
+/* ---------- máy chủ bàn (chủ phòng) ---------- */
+function persist(){ls('pk_state',JSON.stringify(S))}
+function hostIdx(){return S.players.findIndex(p=>p.token==='host')}
+function view(s,i){
+  const v={...s};delete v.deck;v.me=i;v.hands={};
+  if(s.hands)for(const k in s.hands)if(+k===i||(s.phase=='showdown'&&s.reveal.includes(+k)))v.hands[k]=s.hands[k];
+  v.players=s.players.map(p=>({name:p.name,chips:p.chips,on:p.token==='host'||!!(conns[p.token]&&conns[p.token].open)}));
+  return v;
+}
+function bcast(){
+  V=view(S,hostIdx());render();
+  S.players.forEach((p,i)=>{const c=conns[p.token];if(c&&c.open)c.send({t:'state',s:view(S,i)})});
+}
+function mut(fn){
+  const s=structuredClone(S);if(fn(s)===false)return false;
+  s.v=(s.v||0)+1;S=s;persist();bcast();return true;
+}
+function onMsg(c,m){
+  if(m.t=='join'){
+    const s=structuredClone(S);let i=s.players.findIndex(p=>p.token===m.token);
+    if(i<0){
+      if(s.players.length>=MAXP){c.send({t:'full'});return}
+      s.players.push({token:String(m.token).slice(0,20),name:String(m.name||'Khách').slice(0,14),chips:s.start||START});
+    }
+    conns[m.token]=c;c.tok=m.token;S=s;persist();bcast();return;
+  }
+  const i=S.players.findIndex(p=>p.token===c.tok);if(i<0)return;
+  if(m.t=='act')mut(s=>doAct(s,i,m.a,m.x));
+  if(m.t=='deal')hostDeal();
+}
+function startHost(nm){
+  isHost=true;name=nm;ls('pk_name',nm);
+  const id=ls('pk_room')||('poker-'+rnd());
+  status('Đang tạo phòng…');
+  peer=new Peer(id);
+  peer.on('open',()=>{
+    ls('pk_room',id);room=id;status('');
+    if(!S)S={players:[],phase:'lobby',v:0,start:START};
+    if(hostIdx()<0)S.players.push({token:'host',name:nm,chips:S.start||START});
+    persist();bcast();
+  });
+  peer.on('connection',c=>{c.on('data',m=>onMsg(c,m));c.on('close',()=>bcast());c.on('error',()=>{})});
+  peer.on('error',e=>{
+    if(e.type=='unavailable-id'){ls('pk_room',null);peer.destroy();startHost(nm)}
+    else status('Lỗi mạng: '+e.type);
+  });
+}
+function hostDeal(){if(!mut(s=>free(s)&&newHand(s)))alert('Cần ít nhất 2 người và ván trước đã kết thúc.')}
+function adminChips(i){
+  if(!isHost||!free(S))return alert('Chỉ chỉnh được giữa các ván');
+  const v=prompt('Coin của '+S.players[i].name+':',S.players[i].chips);if(v===null||isNaN(+v)||+v<0)return;
+  mut(s=>{s.players[i].chips=Math.floor(+v)});
+}
+function kick(i){
+  if(!isHost||!free(S))return alert('Chỉ mời ra được giữa các ván');
+  if(!confirm('Mời '+S.players[i].name+' ra khỏi bàn?'))return;
+  const t=S.players[i].token;if(conns[t]){try{conns[t].close()}catch(e){}delete conns[t]}
+  mut(s=>{s.players.splice(i,1)});
+}
+function setStart(){
+  const v=prompt('Coin khởi đầu cho người mới và mức hồi lại khi hết coin:',S.start||START);
+  if(v===null||isNaN(+v)||+v<1)return;mut(s=>{s.start=Math.floor(+v)});
+}
+function resetTable(){
+  if(!confirm('Reset cả bàn về ban đầu?'))return;
+  mut(s=>{s.players.forEach(p=>p.chips=s.start||START);s.phase='lobby';s.dealer=null;s.board=[];s.result=null;s.turn=null;s.order=null});
+}
+
+/* ---------- người chơi (không phải chủ phòng) ---------- */
+function connect(){
+  clearTimeout(rt);status('Đang kết nối…');
+  if(peer){try{peer.destroy()}catch(e){}}
+  peer=new Peer();
+  peer.on('open',()=>{
+    conn=peer.connect(room,{reliable:true});
+    conn.on('open',()=>{status('');conn.send({t:'join',token:tok,name})});
+    conn.on('data',m=>{if(m.t=='state'){V=m.s;render()}else if(m.t=='full'){status('Bàn đã đủ 6 người.')}});
+    conn.on('close',lost);conn.on('error',lost);
+  });
+  peer.on('error',lost);
+}
+function lost(){status('Mất kết nối với chủ phòng, đang thử lại…');clearTimeout(rt);rt=setTimeout(connect,3000)}
+function startGuest(nm){
+  isHost=false;name=nm;ls('pk_name',nm);
+  try{tok=sessionStorage.getItem('pk_tok')||rnd()+rnd();sessionStorage.setItem('pk_tok',tok)}catch(e){tok=rnd()+rnd()}
+  connect();
+}
+
+/* ---------- thao tác chung ---------- */
+function act(t,x){if(isHost)mut(s=>doAct(s,hostIdx(),t,x));else if(conn&&conn.open)conn.send({t:'act',a:t,x})}
+function deal(){if(isHost)hostDeal();else if(conn&&conn.open)conn.send({t:'deal'})}
+
+/* ---------- giao diện ---------- */
+function card(c,back){
+  if(back)return '<span class="card back">?</span>';
+  const su=c/13|0;return `<span class="card ${su==1||su==2?'red':''}">${R[c%13+2]}${'♣♦♥♠'[su]}</span>`;
+}
+function landing(){
+  const joining=!!room;
+  $('app').innerHTML=`<div class="panel"><p>${joining?'Bạn được mời vào bàn poker. Nhập tên để vào chơi:':'Tạo phòng mới. Bạn sẽ là chủ phòng và gửi link cho bạn bè.'}</p>
+  <div class="row"><input id="nm" maxlength="14" placeholder="Tên của bạn" value="${esc(name)}" style="width:170px">
+  <button id="go">${joining?'Vào bàn':'Tạo phòng'}</button></div></div>`;
+  $('go').onclick=()=>{const v=$('nm').value.trim();if(!v)return;joining?startGuest(v):startHost(v)};
+}
+function render(){
+  const s=V,app=$('app');if(!s)return;
+  const mi=s.me,inHand=!!s.order&&s.phase!='lobby';
+  const seats=s.players.map((p,i)=>{
+    const ing=inHand&&s.order.includes(i),fold=ing&&s.folded[i],h=s.hands[i];
+    const cards=ing?(h?h.map(c=>card(c)).join(''):card(0,1)+card(0,1)):'';
+    const d=ing&&s.order[s.dealer]===i?' · D':'';
+    const st=!ing?(s.phase=='lobby'?'':'chờ ván sau'):fold?'bỏ bài':s.allin[i]?'ALL-IN':(s.bets[i]?'cược '+s.bets[i]:'');
+    const adm=isHost?`<div style="margin-top:4px"><button class="g" style="padding:3px 8px;font-size:12px" onclick="adminChips(${i})">✎ coin</button>${i!==mi?` <button class="f" style="padding:3px 8px;font-size:12px" onclick="kick(${i})">✕</button>`:''}</div>`:'';
+    return `<div class="seat ${i===mi?'me':''} ${s.turn===i?'turn':''} ${fold||!p.on?'fold':''}"><div class="nm">${esc(p.name)}${i===mi?' (bạn)':''}${d}${p.on?'':' · offline'}</div><div class="chips">💰 ${p.chips}</div><div class="cards">${cards}</div><div class="tag">${st}</div>${adm}</div>`;
+  }).join('');
+  const board=[0,1,2,3,4].map(k=>s.board&&s.board[k]!=null?card(s.board[k]):'<span class="card empty"></span>').join('');
+  let ctl='';
+  if(s.turn===mi){
+    const need=s.current-s.bets[mi],mx=s.bets[mi]+s.players[mi].chips,mn=Math.min(s.current+s.minRaise,mx);
+    ctl=`<div class="row"><button class="f" onclick="act('fold')">Bỏ bài</button>
+    <button onclick="act('call')">${need>0?'Theo '+Math.min(need,s.players[mi].chips):'Check'}</button>
+    <input id="rs" type="number" min="${mn}" max="${mx}" value="${mn}"><button onclick="act('raise',$('rs').value)">Tố lên</button>
+    <button class="g" onclick="act('raise',${mx})">All-in</button></div>`;
+  }else if(inHand&&s.phase!='showdown'&&s.turn!=null){
+    ctl=`<div class="msg">Đang chờ <b>${esc(s.players[s.turn].name)}</b>…</div>`;
+  }
+  const canDeal=(!inHand||s.phase=='showdown')&&s.players.length>=2;
+  const extra=`<div class="row" style="margin-top:8px">${canDeal?'<button onclick="deal()">'+(s.phase=='lobby'?'Bắt đầu ván':'Chia ván mới')+'</button>':''}
+    ${isHost?'<button class="g" onclick="resetTable()">Reset bàn</button><button class="g" onclick="setStart()">Coin khởi đầu</button>':''}</div>`;
+  const link=isHost?`<div class="panel"><div class="tag">Link mời bạn bè (giữ tab này mở suốt buổi chơi):</div><div class="link">${esc(location.href.split('#')[0]+'#'+room)}</div><button class="g" onclick="navigator.clipboard.writeText(location.href.split('#')[0]+'#'+room).then(()=>status('Đã copy link'))">Copy link</button></div>`:'';
+  app.innerHTML=`${link}<div class="table" style="margin-top:10px"><div class="tag">${inHand?s.phase.toUpperCase():'Phòng chờ'} · Blind ${SB}/${BB}</div>
+    <div class="board">${board}</div><div class="pot">Pot: ${inHand?totalPot(s):0}</div>
+    ${s.result?`<div class="win">${esc(s.result)}</div>`:`<div class="msg">${esc(s.log||'')}</div>`}</div>
+    <div class="seats">${seats}</div><div class="panel">${ctl}${extra}</div>`;
+}
+
+/* ---------- khởi động ---------- */
+(function(){
+  room=location.hash.slice(1);
+  if(!room){
+    try{const sv=JSON.parse(ls('pk_state')||'null');
+      if(sv&&sv.players){const h=sv.players.find(p=>p.token==='host');if(h){S=sv;startHost(h.name);return}}}catch(e){}
+  }
+  landing();
+})();
+</script>
+</body>
+</html>
